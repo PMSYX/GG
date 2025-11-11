@@ -1,48 +1,65 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-local Window = Rayfield:CreateWindow({
-   Name = "Rayfield Example Window",
-   Icon = 0, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
-   LoadingTitle = "GHOSTGANG",
-   LoadingSubtitle = "by YoungJ",
-   ShowText = "G", -- for mobile users to unhide rayfield, change if you'd like
-   Theme = "Default", -- Check https://docs.sirius.menu/rayfield/configuration/themes
+-- [[ สคริปต์เดิมทั้งหมดอยู่ด้านบน ]] --
 
-   ToggleUIKeybind = "G", -- The keybind to toggle the UI visibility (string like "K" or Enum.KeyCode)
+function TP(Pos: any): ()
+    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = Pos
+end
 
-   DisableRayfieldPrompts = false,
-   DisableBuildWarnings = false, -- Prevents Rayfield from warning when the script has a version mismatch with the interface
+-- 1. รายชื่อเป้าหมาย (เหมือนเดิม)
+local targetNames = {
+    "Ti Ti Ti Ti Ti Ti Sahur",
+    "Bri Bicus Ticus",
+    "Espressonaa Signorra",
+    "Bearinni Plammini Guardinnii"
+}
 
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = nil, -- Create a custom folder for your hub/game
-      FileName = "GG Hub"
-   },
+-- 2. ตำแหน่งของโฟลเดอร์ Rooms
+local roomsFolder = workspace["The Grand Arena"].Rooms
 
-   Discord = {
-      Enabled = false, -- Prompt the user to join your Discord server if their executor supports it
-      Invite = "noinvitelink", -- The Discord invite code, do not include discord.gg/. E.g. discord.gg/ ABCD would be ABCD
-      RememberJoins = true -- Set this to false to make them join the discord every time they load it up
-   },
+-- 3. (สำคัญ) สร้าง List "ชื่อห้อง" เรียงตามลำดับที่เราต้องการค้นหา
+-- มันจะค้นหา "1" ก่อน, ถ้าไม่เจอ ค่อยไปค้นหา "2"
+local roomNamesToSearch = {"1", "2","3","4","5","6"}
 
-   KeySystem = false, -- Set this to true to use our key system
-   KeySettings = {
-      Title = "Untitled",
-      Subtitle = "Key System",
-      Note = "No method of obtaining the key is provided", -- Use this to tell the user how to get a key
-      FileName = "Key", -- It is recommended to use something unique as other scripts using Rayfield may overwrite your key file
-      SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-      GrabKeyFromSite = false, -- If this is true, set Key below to the RAW site you would like Rayfield to get the key from
-      Key = {"Hello"} -- List of keys that will be accepted by the system, can be RAW file links (pastebin, github etc) or simple strings ("hello","key22")
-   }
-})
+-- 4. สร้างฟังก์ชันหลักขึ้นมาครอบการทำงาน
+local function findAndTeleport()
+    
+    -- 5. Loop นอก: วนลูป "ชื่อห้อง" ตามลำดับใน List
+    for _, roomName in ipairs(roomNamesToSearch) do
+        
+        -- ค้นหาห้องและโฟลเดอร์ Enemies (กัน error)
+        local room = roomsFolder:FindFirstChild(roomName)
+        local enemiesFolder = room and room:FindFirstChild("Enemies")
 
-local Tab = Window:CreateTab("Dungeon", 4483362458) -- Title, Image
-local Toggle = Tab:CreateToggle({
-   Name = "Auto Dungeon",
-   CurrentValue = false,
-   Flag = "Toggle1", -- A flag is the identifier for the configuration file, make sure every element has a different flag if you're using configuration saving to ensure no overlaps
-   Callback = function()
-   -- The function that takes place when the toggle is pressed
-   -- The variable (Value) is a boolean on whether the toggle is true or false
-   end,
-})
+        if enemiesFolder then
+            -- 6. Loop ใน: วนหาศัตรูในห้อง "ปัจจุบัน"
+            for _, v in ipairs(enemiesFolder:GetChildren()) do
+                
+                -- 7. ถ้าเจอเป้าหมาย!
+                if table.find(targetNames, v.Name) then
+                    print("เจอเป้าหมายใน: " .. room.Name .. ", ชื่อ: " .. v.Name)
+                    TP(v.HumanoidRootPart.CFrame)
+                    
+                    -- 8. (สำคัญมาก) สั่ง "return"
+                    -- การ return จะ "หยุดการทำงาน" ของฟังก์ชัน findAndTeleport() ทันที
+                    -- มันจะไม่ไปวนลูปหาห้อง "2" ต่อ
+                    return
+                end
+            end
+        end
+    end
+    
+    -- โค้ดจะมาถึงตรงนี้ "ต่อเมื่อ" วนลูปครบทุกห้องแล้วไม่เจอเป้าหมายเลย
+    print("ไม่พบเป้าหมายในห้องที่กำหนด")
+end
+
+
+-- [[ ส่วนที่แก้ไขอยู่ตรงนี้ ]] --
+
+-- 9. เรียกใช้งานฟังก์ชัน "ซ้ำๆ" ใน Loop
+while true do
+    findAndTeleport()  -- เรียกใช้ฟังก์ชันค้นหาและเทเลพอร์ต
+    
+    -- (สำคัญมาก!) หน่วงเวลา 1 วินาที
+    -- เพื่อไม่ให้ Script ทำงานหนักและเร็วเกินไป จนอาจทำให้เกมค้าง (Crash)
+    -- คุณสามารถปรับตัวเลข (1) ได้ตามต้องการ เช่น task.wait(0.5) หรือ task.wait(5)
+    task.wait(1)       
+end
