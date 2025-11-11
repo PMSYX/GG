@@ -1,65 +1,107 @@
--- [[ สคริปต์เดิมทั้งหมดอยู่ด้านบน ]] --
-
 function TP(Pos: any): ()
+
     game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = Pos
+
 end
+
+
 
 -- 1. รายชื่อเป้าหมาย (เหมือนเดิม)
+
 local targetNames = {
+
     "Ti Ti Ti Ti Ti Ti Sahur",
+
     "Bri Bicus Ticus",
+
     "Espressonaa Signorra",
+
     "Bearinni Plammini Guardinnii"
+
 }
 
+
+
 -- 2. ตำแหน่งของโฟลเดอร์ Rooms
+
 local roomsFolder = workspace["The Grand Arena"].Rooms
 
+
+
 -- 3. (สำคัญ) สร้าง List "ชื่อห้อง" เรียงตามลำดับที่เราต้องการค้นหา
+
 -- มันจะค้นหา "1" ก่อน, ถ้าไม่เจอ ค่อยไปค้นหา "2"
+
 local roomNamesToSearch = {"1", "2","3","4","5","6"}
 
+
+
 -- 4. สร้างฟังก์ชันหลักขึ้นมาครอบการทำงาน
+
 local function findAndTeleport()
+
     
+
     -- 5. Loop นอก: วนลูป "ชื่อห้อง" ตามลำดับใน List
+
     for _, roomName in ipairs(roomNamesToSearch) do
+
         
+
         -- ค้นหาห้องและโฟลเดอร์ Enemies (กัน error)
+
         local room = roomsFolder:FindFirstChild(roomName)
+
         local enemiesFolder = room and room:FindFirstChild("Enemies")
 
+
+
         if enemiesFolder then
+
             -- 6. Loop ใน: วนหาศัตรูในห้อง "ปัจจุบัน"
+
             for _, v in ipairs(enemiesFolder:GetChildren()) do
+
                 
+
                 -- 7. ถ้าเจอเป้าหมาย!
+
                 if table.find(targetNames, v.Name) then
+
                     print("เจอเป้าหมายใน: " .. room.Name .. ", ชื่อ: " .. v.Name)
+
                     TP(v.HumanoidRootPart.CFrame)
+
                     
+
                     -- 8. (สำคัญมาก) สั่ง "return"
+
                     -- การ return จะ "หยุดการทำงาน" ของฟังก์ชัน findAndTeleport() ทันที
+
                     -- มันจะไม่ไปวนลูปหาห้อง "2" ต่อ
+
                     return
+
                 end
+
             end
+
         end
+
     end
+
     
+
     -- โค้ดจะมาถึงตรงนี้ "ต่อเมื่อ" วนลูปครบทุกห้องแล้วไม่เจอเป้าหมายเลย
-    print("ไม่พบเป้าหมายในห้องที่กำหนด")
+
+    print("ไม่พบเป้าหมายในห้อง 1 และ 2")
+
 end
 
 
--- [[ ส่วนที่แก้ไขอยู่ตรงนี้ ]] --
 
--- 9. เรียกใช้งานฟังก์ชัน "ซ้ำๆ" ใน Loop
-while false do
-    findAndTeleport()  -- เรียกใช้ฟังก์ชันค้นหาและเทเลพอร์ต
-    
-    -- (สำคัญมาก!) หน่วงเวลา 1 วินาที
-    -- เพื่อไม่ให้ Script ทำงานหนักและเร็วเกินไป จนอาจทำให้เกมค้าง (Crash)
-    -- คุณสามารถปรับตัวเลข (1) ได้ตามต้องการ เช่น task.wait(0.5) หรือ task.wait(5)
-    task.wait(1)       
+-- 9. เรียกใช้งานฟังก์ชันที่เราสร้างขึ้นมา
+_G.loop = false;
+while _G.loop do wait()
+findAndTeleport()
 end
