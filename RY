@@ -101,7 +101,6 @@ end
 
 
 -- 9. เรียกใช้งานฟังก์ชันที่เราสร้างขึ้นมา
-_G.loop = Value;
-while _G.loop do wait()
+while Value do wait()
 findAndTeleport()
 end
