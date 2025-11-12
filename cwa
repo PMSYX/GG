@@ -1,0 +1,122 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer 
+
+-- ** 1. เพิ่มเวลารอเริ่มต้นให้มากขึ้น (เพื่อการโหลดเกมที่ช้า)**
+wait(10) 
+print("Initial wait (10s) complete. Starting Service checks...")
+
+-- ** 2. ใช้ WaitForChild และตรวจสอบการโหลด Remote Service**
+-- กำหนดเวลา timeout 30 วินาที สำหรับการโหลดแต่ละส่วน
+local Knit = ReplicatedStorage:WaitForChild("Packages", 30):FindFirstChild("Knit")
+if not Knit then error("Knit Package not found.") end
+
+local Services = Knit:FindFirstChild("Services")
+if not Services then error("Services Folder not found.") end
+
+local MonsterService = Services:WaitForChild("MonsterService", 30)
+if not MonsterService then error("MonsterService not found. Cannot continue script.") end
+
+local RF_Folder = MonsterService:WaitForChild("RF", 30)
+if not RF_Folder then error("RF Folder not found.") end
+
+local CanAttackRF = RF_Folder:WaitForChild("CanAttack", 30)
+local RequestAttackRF = RF_Folder:WaitForChild("RequestAttack", 30)
+
+if not CanAttackRF or not RequestAttackRF then
+    error("Required Remote Functions (CanAttack or RequestAttack) not found after waiting.")
+end
+
+-- ** 3. รอ Room Folder ที่จำเป็น**
+local roomsFolder = Workspace:WaitForChild("The Grand Arena", 30):WaitForChild("Rooms", 30)
+local room1 = roomsFolder:WaitForChild("1", 30) 
+
+-- ** <--- NEW: ฟังก์ชันรอเกมเริ่มโดยใช้เวลานับถอยหลัง ---> **
+local function waitForGameStart()
+    -- อ้างอิงจากเวลา "Game Start In" ที่มักจะเป็น 5-7 วินาที
+    print("Waiting 7 seconds to simulate the on-screen countdown...")
+    wait(7) 
+    print("Countdown finished. Game assumed to be started.")
+end 
+-- ** <--- สิ้นสุดฟังก์ชันรอเกมเริ่ม ---> **
+
+print("Starting Auto-Farm (Clean Version)...")
+
+-- รอประตูเปิดครั้งแรกตามเวลานับถอยหลัง
+waitForGameStart()
+
+while true do
+    -- รอลูปหลักนานขึ้นเพื่อลดภาระของสคริปต์ต่อเซิร์ฟเวอร์
+    wait(1) 
+
+    local playerCharacter = LocalPlayer.Character
+    local playerRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+
+    if not playerRootPart then
+        print("Waiting for character...")
+        continue 
+    end
+    
+    -- ในโค้ดนี้ เราจะสมมติว่าถ้าผ่าน waitForGameStart() มาแล้ว ประตูจะเปิด
+    
+    local playerPosition = playerRootPart.Position
+
+    local closestMonster = nil
+    local minDistance = math.huge
+
+    for i, room in pairs(roomsFolder:GetChildren()) do
+        
+        local enemiesFolder = room:FindFirstChild("Enemies")
+        
+        if enemiesFolder then
+            
+            for j, monster in pairs(enemiesFolder:GetChildren()) do
+                
+                local humanoid = monster:FindFirstChildOfClass("Humanoid")
+                local monsterRootPart = monster:FindFirstChild("HumanoidRootPart")
+                
+                if humanoid and humanoid.Health > 0 and monsterRootPart then
+                    
+                    local monsterPosition = monsterRootPart.Position
+                    local distance = (playerPosition - monsterPosition).Magnitude
+                    
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestMonster = monster
+                    end
+                end
+            end
+        end
+    end
+
+    if closestMonster then
+        
+        local targetRootPart = closestMonster:FindFirstChild("HumanoidRootPart")
+        local targetCFrame = targetRootPart.CFrame
+        
+        -- Teleport and Attack
+        playerRootPart.CFrame = targetCFrame * CFrame.new(0, 5, 0)
+        wait(0.1)
+
+        local argsCanAttack = { LocalPlayer }
+        local canActuallyAttack = CanAttackRF:InvokeServer(unpack(argsCanAttack))
+        
+        if canActuallyAttack then
+            local argsRequestAttack = { targetCFrame }
+            RequestAttackRF:InvokeServer(unpack(argsRequestAttack))
+            wait(0.8) 
+        else
+            print("CanAttack = false (Cooldown?)")
+        end
+    else
+        print("No living monsters found. Waiting...")
+        
+        -- ถ้าหามอนสเตอร์ไม่เจอ ให้รอนานขึ้นและสันนิษฐานว่ารอบใหม่กำลังจะมา
+        print("Waiting for next round countdown...")
+        wait(5) 
+        waitForGameStart() -- เรียกฟังก์ชันรอคอยเวลาอีกครั้ง สำหรับรอบถัดไป
+        
+        wait(2)
+    end
+end
