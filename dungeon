@@ -1,0 +1,177 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer 
+
+## 1. เริ่มต้นด้วยการรอคอย Service พื้นฐานให้พร้อม
+print("Waiting for essential services...")
+
+local Knit = ReplicatedStorage:WaitForChild("Packages", 30):FindFirstChild("Knit")
+if not Knit then error("Knit Package not found.") end
+
+local Services = Knit:FindFirstChild("Services")
+if not Services then error("Services Folder not found.") end
+
+local MonsterService = Services:WaitForChild("MonsterService", 30)
+if not MonsterService then error("MonsterService not found. Cannot continue script.") end
+
+local RF_Folder = MonsterService:WaitForChild("RF", 30)
+if not RF_Folder then error("RF Folder not found.") end
+
+local CanAttackRF = RF_Folder:WaitForChild("CanAttack", 30)
+local RequestAttackRF = RF_Folder:WaitForChild("RequestAttack", 30)
+
+if not CanAttackRF or not RequestAttackRF then
+    error("Required Remote Functions (CanAttack or RequestAttack) not found after waiting.")
+end
+
+## 2. รอ The Grand Arena ให้โหลดเสร็จสมบูรณ์
+local arenaModel = Workspace:WaitForChild("The Grand Arena", 60)
+local roomsFolder = arenaModel:WaitForChild("Rooms", 30)
+local room1 = roomsFolder:WaitForChild("1", 30) 
+print("Map model is now loaded.")
+
+## ** <--- การแก้ไขปัญหาประตูเหลืองที่สำคัญ: Brute Force Search ---> **
+local function findYellowBarrier()
+    -- ค้นหา Part ประตูเหลือง (Part ที่มี Transparency น้อยกว่า 1 และอยู่ใน Door model)
+    local doorModel = room1:FindFirstChild("Door")
+    
+    if doorModel then
+        for _, obj in pairs(doorModel:GetDescendants()) do
+            -- ค้นหา Part ที่มีสีเหลือง/ส้ม (Color check) หรือชื่อที่เกี่ยวข้อง
+            if obj:IsA("BasePart") and (obj.Name == "Part" or obj.Name == "Wall") and obj.Transparency < 1 then
+                -- เราจะสมมติว่า Part ที่ไม่ใช่โปร่งใส (<1) คือ Part ที่กั้นทาง
+                return obj 
+            end
+        end
+    end
+    
+    return nil
+end
+## ** <--- สิ้นสุดการแก้ไขปัญหาประตูเหลือง ---> **
+
+
+## ฟังก์ชันรอเกมเริ่ม (รอให้ประตูเหลืองหายไป)
+local function waitForGameStart()
+    print("Waiting for the current round barrier to disappear...")
+    
+    local currentBarrier = findYellowBarrier()
+    local waitCount = 0
+
+    ## ถ้าประตูเหลืองยังอยู่ (และไม่หายไปทันที) เราจะรอ
+    while currentBarrier and waitCount < 30 do -- รอสูงสุด 30 วินาที
+        print("Door is still present. Waiting for it to be removed or destroyed...")
+        
+        ## ใช้ AncestryChanged เพื่อให้ได้ผลลัพธ์ทันทีที่ Part ถูกทำลาย/ย้าย
+        local changedSignal = currentBarrier.AncestryChanged:Connect(function() end)
+        
+        ## รอ 1 วินาที หรือจนกว่า AncestryChanged จะทำงาน
+        local success, err = pcall(function()
+            currentBarrier.AncestryChanged:Wait()
+        end)
+        
+        changedSignal:Disconnect() -- ยกเลิกการเชื่อมต่อเมื่อรอนานเกินไป
+
+        if success then
+            -- ถ้า AncestryChanged ทำงาน หมายความว่า Part ถูกย้าย/ทำลายแล้ว
+            print("Barrier detected as removed/destroyed.")
+            wait(0.5) -- ให้เวลาเกมประมวลผล
+            return
+        end
+        
+        wait(1)
+        waitCount = waitCount + 1
+        -- ตรวจสอบ Part ใหม่อีกครั้งในการวนซ้ำถัดไป
+        currentBarrier = findYellowBarrier() 
+    end
+    
+    ## Fallback: ถ้ายังหา Part ไม่เจอหลังจากการรอคอยแล้ว ให้ใช้เวลารอ 7 วินาที
+    if waitCount >= 30 then
+        print("Timeout waiting for barrier. Using 7s countdown fallback.")
+        wait(7)
+    end
+    
+    print("Round Start Confirmed. Continuing Auto-Farm script...")
+end 
+
+print("Starting Auto-Farm (Clean Version)...")
+
+## รอประตูเปิดครั้งแรก
+waitForGameStart()
+
+while true do
+    wait(1) 
+
+    local playerCharacter = LocalPlayer.Character
+    local playerRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+
+    if not playerRootPart then
+        print("Waiting for character...")
+        continue 
+    end
+    
+    local playerPosition = playerRootPart.Position
+
+    local closestMonster = nil
+    local minDistance = math.huge
+
+    for i, room in pairs(roomsFolder:GetChildren()) do
+        
+        local enemiesFolder = room:FindFirstChild("Enemies")
+        
+        if enemiesFolder then
+            
+            for j, monster in pairs(enemiesFolder:GetChildren()) do
+                
+                local humanoid = monster:FindFirstChildOfClass("Humanoid")
+                local monsterRootPart = monster:FindFirstChild("HumanoidRootPart")
+                
+                if humanoid and humanoid.Health > 0 and monsterRootPart then
+                    
+                    local monsterPosition = monsterRootPart.Position
+                    local distance = (playerPosition - monsterPosition).Magnitude
+                    
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestMonster = monster
+                    end
+                end
+            end
+        end
+    end
+
+    if closestMonster then
+        
+        local targetRootPart = closestMonster:FindFirstChild("HumanoidRootPart")
+        local targetCFrame = targetRootPart.CFrame
+        
+        -- *** ตรวจสอบซ้ำ: ถ้า Part ประตูยังอยู่ ให้รอก่อน ***
+        if findYellowBarrier() then
+             print("Monster found, but door is still present! Waiting for round start...")
+             waitForGameStart() -- กลับไปรอการเปิดประตูอีกครั้ง
+             continue
+        end
+        
+        playerRootPart.CFrame = targetCFrame * CFrame.new(0, 5, 0)
+        wait(0.1)
+
+        local argsCanAttack = { LocalPlayer }
+        local canActuallyAttack = CanAttackRF:InvokeServer(unpack(argsCanAttack))
+        
+        if canActuallyAttack then
+            local argsRequestAttack = { targetCFrame }
+            RequestAttackRF:InvokeServer(unpack(argsRequestAttack))
+            wait(0.8) 
+        else
+            print("CanAttack = false (Cooldown?)")
+        end
+    else
+        print("No living monsters found. Waiting...")
+        
+        print("Waiting for next round barrier to appear/disappear...")
+        wait(5) 
+        waitForGameStart() 
+        
+        wait(2)
+    end
+end
