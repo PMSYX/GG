@@ -1,0 +1,156 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+print("Auto-Farm Script Loading...")
+
+--- 1. การเตรียมการ (Initialization)
+local Knit = ReplicatedStorage:WaitForChild("Packages", 30):FindFirstChild("Knit")
+if not Knit then error("Knit Package not found.") end
+
+local Services = Knit:FindFirstChild("Services")
+if not Services then error("Services Folder not found.") end
+
+local MonsterService = Services:WaitForChild("MonsterService", 30)
+if not MonsterService then error("MonsterService not found.") end
+
+local RF_Folder = MonsterService:WaitForChild("RF", 30)
+if not RF_Folder then error("RF Folder not found.") end
+
+local CanAttackRF = RF_Folder:WaitForChild("CanAttack", 30)
+local RequestAttackRF = RF_Folder:WaitForChild("RequestAttack", 30)
+
+if not CanAttackRF or not RequestAttackRF then
+    error("Required Remote Functions (CanAttack or RequestAttack) not found.")
+end
+
+local arenaModel = Workspace:WaitForChild("The Grand Arena", 60)
+local roomsFolder = arenaModel:WaitForChild("Rooms", 30)
+local room1 = roomsFolder:WaitForChild("1", 30) -- ใช้สำหรับตรวจสอบประตู
+
+print("Auto-Farm Script Ready!")
+
+--- 2. ฟังก์ชันตรวจสอบประตู/สิ่งกีดขวาง
+
+local function findYellowBarrier()
+    -- ค้นหา Part ประตูเหลือง (Part ที่มี Transparency น้อยกว่า 1 และอยู่ใน Door model)
+    local doorModel = room1:FindFirstChild("Door")
+    
+    if doorModel then
+        for _, obj in pairs(doorModel:GetDescendants()) do
+            -- ค้นหา Part ที่เป็น BasePart, ชื่อที่เกี่ยวข้อง, และไม่โปร่งใส
+            if obj:IsA("BasePart") and (obj.Name == "Part" or obj.Name == "Wall") and obj.Transparency < 1 then
+                return obj 
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function waitForGameStart()
+    print("Waiting for the current round barrier to disappear...")
+    
+    local currentBarrier = findYellowBarrier()
+    local waitCount = 0
+
+    while currentBarrier and waitCount < 30 do -- รอสูงสุด 30 วินาที
+        print("Door is still present. Waiting for it to be removed or destroyed...")
+        
+        local changedSignal = currentBarrier.AncestryChanged:Connect(function() end)
+        
+        local success, err = pcall(function()
+            currentBarrier.AncestryChanged:Wait()
+        end)
+        
+        changedSignal:Disconnect() 
+
+        if success then
+            print("Barrier detected as removed/destroyed.")
+            wait(0.5) 
+            return
+        end
+        
+        wait(1)
+        waitCount = waitCount + 1
+        currentBarrier = findYellowBarrier() 
+    end
+    
+    if waitCount >= 30 then
+        print("Timeout waiting for barrier. Using 7s countdown fallback.")
+        wait(7)
+    end
+    
+    print("Round Start Confirmed. Continuing Auto-Farm script...")
+end 
+
+-- รอประตูเปิดครั้งแรกก่อนเริ่มลูป
+waitForGameStart()
+
+--- 3. Auto-Farm Loop
+while true do
+    wait(1)
+    
+    local playerCharacter = LocalPlayer.Character
+    local playerRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+    
+    if not playerRootPart then 
+        print("Waiting for character...")
+        continue 
+    end
+    
+    local playerPosition = playerRootPart.Position
+    local closestMonster = nil
+    local minDistance = math.huge
+    
+    -- ค้นหามอนสเตอร์ที่ใกล้ที่สุด
+    for i, room in pairs(roomsFolder:GetChildren()) do
+        local enemiesFolder = room:FindFirstChild("Enemies")
+        if enemiesFolder then
+            for j, monster in pairs(enemiesFolder:GetChildren()) do
+                local humanoid = monster:FindFirstChildOfClass("Humanoid")
+                local monsterRootPart = monster:FindFirstChild("HumanoidRootPart")
+                
+                if humanoid and humanoid.Health > 0 and monsterRootPart then
+                    local distance = (playerPosition - monsterRootPart.Position).Magnitude
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestMonster = monster
+                    end
+                end
+            end
+        end
+    end
+    
+    if closestMonster then
+        -- *** ตรวจสอบซ้ำ: ถ้า Part ประตูยังอยู่ ให้รอก่อน ***
+        if findYellowBarrier() then
+             print("Monster found, but door is still present! Waiting for round start...")
+             waitForGameStart() -- กลับไปรอการเปิดประตูอีกครั้ง
+             continue
+        end
+
+        local targetRootPart = closestMonster:FindFirstChild("HumanoidRootPart")
+        
+        -- Teleport ไปเหนือมอนสเตอร์
+        playerRootPart.CFrame = targetRootPart.CFrame * CFrame.new(0, 5, 0)
+        wait(0.1)
+        
+        -- โจมตี
+        local canAttack = CanAttackRF:InvokeServer(LocalPlayer)
+        if canAttack then
+            RequestAttackRF:InvokeServer(targetRootPart.CFrame)
+            wait(0.8)
+        else
+            print("CanAttack = false (Cooldown?)")
+        end
+    else
+        print("No living monsters found. Waiting for next round...")
+        
+        -- หากไม่มีมอนสเตอร์ ให้เริ่มกระบวนการรอรอบใหม่
+        wait(5) 
+        waitForGameStart() 
+        wait(2)
+    end
+end
