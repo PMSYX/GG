@@ -1,0 +1,62 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+print("Auto-Farm Script Loading...")
+
+local Knit = ReplicatedStorage:WaitForChild("Packages", 30):FindFirstChild("Knit")
+local Services = Knit:FindFirstChild("Services")
+local MonsterService = Services:WaitForChild("MonsterService", 30)
+local RF_Folder = MonsterService:WaitForChild("RF", 30)
+local CanAttackRF = RF_Folder:WaitForChild("CanAttack", 30)
+local RequestAttackRF = RF_Folder:WaitForChild("RequestAttack", 30)
+
+local arenaModel = Workspace:WaitForChild("The Grand Arena", 60)
+local roomsFolder = arenaModel:WaitForChild("Rooms", 30)
+
+print("Auto-Farm Script Ready!")
+
+-- Auto-Farm Loop
+while true do
+   wait(1)
+   
+   local playerCharacter = LocalPlayer.Character
+   local playerRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+   
+   if not playerRootPart then continue end
+   
+   local playerPosition = playerRootPart.Position
+   local closestMonster = nil
+   local minDistance = math.huge
+   
+   for i, room in pairs(roomsFolder:GetChildren()) do
+      local enemiesFolder = room:FindFirstChild("Enemies")
+      if enemiesFolder then
+         for j, monster in pairs(enemiesFolder:GetChildren()) do
+            local humanoid = monster:FindFirstChildOfClass("Humanoid")
+            local monsterRootPart = monster:FindFirstChild("HumanoidRootPart")
+            
+            if humanoid and humanoid.Health > 0 and monsterRootPart then
+               local distance = (playerPosition - monsterRootPart.Position).Magnitude
+               if distance < minDistance then
+                  minDistance = distance
+                  closestMonster = monster
+               end
+            end
+         end
+      end
+   end
+   
+   if closestMonster then
+      local targetRootPart = closestMonster:FindFirstChild("HumanoidRootPart")
+      playerRootPart.CFrame = targetRootPart.CFrame * CFrame.new(0, 5, 0)
+      wait(0.1)
+      
+      local canAttack = CanAttackRF:InvokeServer(LocalPlayer)
+      if canAttack then
+         RequestAttackRF:InvokeServer(targetRootPart.CFrame)
+         wait(0.8)
+      end
+   end
+end
