@@ -1,0 +1,116 @@
+-- =============================================
+-- ไฟล์นี้จะถูกเก็บไว้บน GitHub
+-- =============================================
+print("Auto-Farm Module Loaded.")
+
+-- สร้างตาราง (Module) ที่จะส่งกลับไป
+local AutoFarmModule = {}
+
+-- ตัวแปรสำหรับเช็คสถานะภายใน Module นี้
+local isRunning = false
+
+-- เมื่อถูกเรียก, จะเริ่มลูปฟาร์ม
+function AutoFarmModule.Start()
+    if isRunning then 
+        print("Farm is already running.")
+        return 
+    end
+    
+    isRunning = true
+    print("Auto-Farm Enabled.")
+
+    -- ดึง Services ต่างๆ
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Players = game:GetService("Players")
+    local Workspace = game:GetService("Workspace")
+    local LocalPlayer = Players.LocalPlayer
+
+    -- [!] หมายเหตุ: เราย้ายการดึง Service มาไว้ในนี้
+    -- เพื่อให้แน่ใจว่ามันถูกเรียกเมื่อ Start() ทำงานเท่านั้น
+    local MonsterService = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("MonsterService")
+    local CanAttackRF = MonsterService:WaitForChild("RF"):WaitForChild("CanAttack")
+    local RequestAttackRF = MonsterService:WaitForChild("RF"):WaitForChild("RequestAttack")
+    local roomsFolder = Workspace:WaitForChild("The Grand Arena"):WaitForChild("Rooms")
+    
+    -- ใช้ task.spawn เพื่อให้ลูปนี้ทำงานแยกออกไป
+    -- โดยไม่ขัดขวางการทำงานของสคริปต์อื่น (เช่น UI)
+    task.spawn(function()
+        
+        -- ลูปจะทำงานตราบใดที่ isRunning = true
+        while isRunning == true do
+            task.wait(0.5) 
+
+            -- ถ้า isRunning ถูกเปลี่ยนเป็น false (โดยฟังก์ชัน Stop)
+            -- ลูปจะหยุดทันทีในรอบถัดไป
+            if isRunning == false then 
+                break 
+            end
+
+            local playerCharacter = LocalPlayer.Character
+            local playerRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+
+            if not playerRootPart then
+                print("Waiting for character...")
+                continue 
+            end
+            
+            local playerPosition = playerRootPart.Position
+            local closestMonster = nil
+            local minDistance = math.huge
+
+            for i, room in pairs(roomsFolder:GetChildren()) do
+                local enemiesFolder = room:FindFirstChild("Enemies")
+                if enemiesFolder then
+                    for j, monster in pairs(enemiesFolder:GetChildren()) do
+                        local humanoid = monster:FindFirstChildOfClass("Humanoid")
+                        local monsterRootPart = monster:FindFirstChild("HumanoidRootPart")
+                        if humanoid and humanoid.Health > 0 and monsterRootPart then
+                            local monsterPosition = monsterRootPart.Position
+                            local distance = (playerPosition - monsterPosition).Magnitude
+                            if distance < minDistance then
+                                minDistance = distance
+                                closestMonster = monster
+                            end
+                        end
+                    end
+                end
+            end
+
+            if closestMonster then
+                local targetRootPart = closestMonster:FindFirstChild("HumanoidRootPart")
+                local targetCFrame = targetRootPart.CFrame
+                
+                playerRootPart.CFrame = targetCFrame * CFrame.new(0, 5, 0)
+                task.wait(0.1)
+
+                local argsCanAttack = { LocalPlayer }
+                local canActuallyAttack = CanAttackRF:InvokeServer(unpack(argsCanAttack))
+                
+                if canActuallyAttack then
+                    local argsRequestAttack = { targetCFrame }
+                    RequestAttackRF:InvokeServer(unpack(argsRequestAttack))
+                    task.wait(0.5)
+                else
+                    print("CanAttack = false (Cooldown?)")
+                end
+            else
+                print("No living monsters found. Waiting...")
+                task.wait(2)
+            end
+        end
+        
+        print("Auto-Farm Loop Stopped.")
+    end)
+end
+
+-- เมื่อถูกเรียก, จะตั้งค่า isRunning เป็น false
+-- ซึ่งจะทำให้ลูปใน task.spawn หยุดทำงาน
+function AutoFarmModule.Stop()
+    if not isRunning then return end
+    
+    isRunning = false
+    print("Auto-Farm Disabled.")
+end
+
+-- คืนค่าตาราง Module นี้ออกไป
+return AutoFarmModule
