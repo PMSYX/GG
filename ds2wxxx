@@ -1,0 +1,133 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer 
+
+local MonsterService = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("MonsterService")
+local CanAttackRF = MonsterService:WaitForChild("RF"):WaitForChild("CanAttack")
+local RequestAttackRF = MonsterService:WaitForChild("RF"):WaitForChild("RequestAttack")
+
+local roomsFolder = Workspace:WaitForChild("The Grand Arena"):WaitForChild("Rooms")
+local room1 = roomsFolder:WaitForChild("1") 
+
+-- กำหนดตัวแปร Part ประตูไว้ที่ Global scope
+local DOOR_PART = nil 
+local doorModel = room1:FindFirstChild("Door")
+if doorModel then
+    local wallGate = doorModel:FindFirstChild("Wallgate")
+    if wallGate then
+        DOOR_PART = wallGate:FindFirstChild("Part")
+    end
+end
+
+-- ฟังก์ชันรอเกมเริ่ม (ยังใช้ Transparency เป็นตัวหลัก)
+local function waitForGameStart()
+    print("Waiting for the door in Room 1 to open (Transparency check)...")
+    
+    if DOOR_PART then
+        print("Found barrier part. Waiting for Transparency to reach 1...")
+        
+        if DOOR_PART.Transparency < 1 then
+            print("Door is currently closed. Waiting for property change...")
+            
+            -- Wait loop to ensure the script pauses until Transparency is 1
+            repeat
+                wait(0.1)
+            until DOOR_PART.Transparency >= 1
+        end
+    else
+        print("Could not find barrier Part. Waiting 6 seconds as fallback...")
+        wait(6) 
+    end
+    
+    print("Game Start Signal Received. Continuing Auto-Farm script...")
+end 
+
+print("Starting Auto-Farm (Clean Version)...")
+
+-- รอประตูเปิดครั้งแรก
+waitForGameStart()
+
+while true do
+    wait(1) -- เพิ่มเวลารอในลูปหลัก
+
+    local playerCharacter = LocalPlayer.Character
+    local playerRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+
+    if not playerRootPart then
+        print("Waiting for character...")
+        continue 
+    end
+    
+    -- *** NEW: ตรวจสอบสถานะประตูซ้ำก่อนเริ่มหาเป้าหมาย ***
+    if DOOR_PART and DOOR_PART.Transparency < 1 then
+        print("Door is closed again (New Round?). Re-running check...")
+        waitForGameStart() -- เรียกฟังก์ชันรอซ้ำ ถ้าประตูถูกปิดใหม่
+        continue
+    end
+    -- *************************************************
+
+    local playerPosition = playerRootPart.Position
+
+    local closestMonster = nil
+    local minDistance = math.huge
+
+    -- Find the closest living monster
+    for i, room in pairs(roomsFolder:GetChildren()) do
+        
+        -- ... โค้ดหา monster เหมือนเดิม ...
+        local enemiesFolder = room:FindFirstChild("Enemies")
+        
+        if enemiesFolder then
+            
+            for j, monster in pairs(enemiesFolder:GetChildren()) do
+                
+                local humanoid = monster:FindFirstChildOfClass("Humanoid")
+                local monsterRootPart = monster:FindFirstChild("HumanoidRootPart")
+                
+                if humanoid and humanoid.Health > 0 and monsterRootPart then
+                    
+                    local monsterPosition = monsterRootPart.Position
+                    local distance = (playerPosition - monsterPosition).Magnitude
+                    
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestMonster = monster
+                    end
+                end
+            end
+        end
+    end
+
+    if closestMonster then
+        
+        -- *** NEW: ตรวจสอบประตูซ้ำอีกครั้งก่อน Teleport ***
+        if DOOR_PART and closestMonster.Parent.Parent.Name == "1" and DOOR_PART.Transparency < 1 then
+             print("Monster found, but door is closed! Skipping attack...")
+             wait(2)
+             continue
+        end
+        -- ***************************************************
+        
+        local targetRootPart = closestMonster:FindFirstChild("HumanoidRootPart")
+        local targetCFrame = targetRootPart.CFrame
+        
+        -- Teleport and Attack
+        playerRootPart.CFrame = targetCFrame * CFrame.new(0, 5, 0)
+        wait(0.1)
+
+        local argsCanAttack = { LocalPlayer }
+        local canActuallyAttack = CanAttackRF:InvokeServer(unpack(argsCanAttack))
+        
+        if canActuallyAttack then
+            local argsRequestAttack = { targetCFrame }
+            RequestAttackRF:InvokeServer(unpack(argsRequestAttack))
+            wait(0.8) 
+        else
+            print("CanAttack = false (Cooldown?)")
+        end
+    else
+        print("No living monsters found. Waiting...")
+        wait(2)
+    end
+end
