@@ -1,0 +1,80 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage") -- 1. เพิ่ม Service นี้เข้ามา
+
+local LocalPlayer = Players.LocalPlayer
+
+-- 2. เพิ่มตัวแปรสำหรับเรียกฟังก์ชันโจมตี
+local requestAttackFunction = ReplicatedStorage:WaitForChild("Packages")
+    :WaitForChild("Knit")
+    :WaitForChild("Services")
+    :WaitForChild("MonsterService")
+    :WaitForChild("RF")
+    :WaitForChild("RequestAttack")
+
+-- --- Settings ---
+local FARM_DELAY = 1.0 
+local lastFarmTime = 0
+local MONSTER_FOLDER = Workspace:WaitForChild("Monsters") 
+local targetNames = {
+    ["Tang Tang Tang Tang Kelentang"] = true,
+    ["AIessio"] = true,
+    ["TrikitrakateIas"] = true,
+    ["Tri Tri Tri Tri Tri Tri Tri Tri Tri Tri Tri Sarur"] = true,
+    ["Tombstone"] = true
+}
+-- ----------------
+
+RunService.Heartbeat:Connect(function()
+    local currentTime = tick()
+    if currentTime - lastFarmTime < FARM_DELAY then
+        return 
+    end
+    lastFarmTime = currentTime
+
+    pcall(function()
+        local playerCharacter = LocalPlayer.Character
+        local playerRootPart = playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart")
+        
+        if not playerRootPart then 
+            return 
+        end
+        
+        local playerPosition = playerRootPart.Position
+        local closestMonster = nil
+        local minDistance = math.huge
+        
+        -- (ส่วนการค้นหามอนสเตอร์ยังเหมือนเดิม)
+        for _, monster in ipairs(MONSTER_FOLDER:GetChildren()) do
+            if targetNames[monster.Name] then
+                local monsterRootPart = monster:FindFirstChild("HumanoidRootPart")
+                local humanoid = monster:FindFirstChild("Humanoid")
+                
+                if monsterRootPart and humanoid and humanoid.Health > 0 then
+                    local distance = (playerPosition - monsterRootPart.Position).Magnitude
+                    if distance < minDistance then
+                        minDistance = distance
+                        closestMonster = monster
+                    end
+                end
+            end
+        end
+        
+        -- 3. นี่คือส่วนที่ดัดแปลง
+        if closestMonster then
+            local targetRootPart = closestMonster.HumanoidRootPart
+            if targetRootPart then
+                
+                -- ### สิ่งที่เปลี่ยน ###
+                -- จากเดิม:
+                -- playerRootPart.CFrame = targetRootPart.CFrame * CFrame.new(0, 5, 0)
+                
+                -- เปลี่ยนเป็น:
+                local args = { targetRootPart.CFrame }
+                requestAttackFunction:InvokeServer(unpack(args))
+                
+            end
+        end
+    end)
+end)
